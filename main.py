@@ -12,7 +12,7 @@ from movieDetails import fetch_movie_details
 
 
 name = "Lexa: "
-api_key = '8647e66c3eb65f11c331cdfd8ca059b3'
+api_key = 'api-key'
 site = "piratebay"
 cache_file = 'input_cache.pkl'
 
