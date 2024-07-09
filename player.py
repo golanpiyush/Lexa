@@ -5,7 +5,12 @@ import shutil
 from spinner import Spinner
 import threading
 import platform
+import requests
 import subprocess
+import webbrowser
+from urllib.parse import urlencode
+
+
 def get_temp_directory():
     ram_disk_paths = ['R:\\PowderPlayerTemp', 'S:\\PowderPlayerTemp', 'T:\\PowderPlayerTemp']
     for path in ram_disk_paths:
@@ -15,17 +20,114 @@ def get_temp_directory():
     # Fallback to a directory in the user's temp folder
     return os.path.join(os.environ['TEMP'], 'PowderPlayerTemp')
 
+api_key = '8647e66c3eb65f11c331cdfd8ca059b3'
+def is_powder_player_running():
+    return any("powder.exe" in p.name().lower() for p in psutil.process_iter(['name']))
+
+
+def play_trailer_with_powderplayer(movie_name, api_key, autoplay=True):
+    try:
+        # Search for the movie on TMDB
+        search_url = "https://api.themoviedb.org/3/search/movie"
+        search_params = {
+            'api_key': api_key,
+            'query': movie_name
+        }
+        
+        search_response = requests.get(search_url, params=search_params)
+        search_json = search_response.json()
+
+        # Check if there are results for the search query
+        if not search_json['results']:
+            print(f"No results found for '{movie_name}' on TMDB.")
+            return None
+
+        # Get the movie ID of the first result
+        movie_id = search_json['results'][0]['id']
+
+        # Fetch trailers for the movie
+        trailers_url = f"https://api.themoviedb.org/3/movie/{movie_id}/videos"
+        trailers_params = {
+            'api_key': api_key
+        }
+        
+        trailers_response = requests.get(trailers_url, params=trailers_params)
+        trailers_json = trailers_response.json()
+
+        # Extract YouTube trailers
+        trailers = []
+        for item in trailers_json.get('results', []):
+            if item['type'] == 'Trailer' and item['site'] == 'YouTube':
+                trailer_data = {
+                    'name': item['name'],
+                    'key': item['key']
+                }
+                trailers.append(trailer_data)
+
+        # If trailers are found, play the first trailer with autoplay option
+        if trailers:
+            print(f"Found {len(trailers)} trailers for '{movie_name}':")
+            trailer = trailers[0]
+            print(f"Playing trailer '{trailer['name']}' {'with autoplay' if autoplay else 'without autoplay'}...")
+
+            # Construct YouTube URL with parameters
+            base_url = "https://www.youtube.com/watch"
+            params = {
+                'v': trailer['key'],
+                'autoplay': 1 if autoplay else 0
+            }
+            full_url = f"{base_url}?{urlencode(params)}"
+
+            # Open the YouTube URL in the default web browser
+            webbrowser.open(full_url)
+
+            return True
+
+        else:
+            print(f"No trailers found for '{movie_name}' on TMDB.")
+            return False
+
+    except Exception as e:
+        print(f"An error occurred: {str(e)}")
+        return None
+
+
+def is_vlc_installed():
+    # Check if VLC is installed by attempting to run 'vlc' command and checking return code
+    try:
+        subprocess.run(['vlc', '--version'], stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=True)
+        return True
+    except subprocess.CalledProcessError:
+        # Check if VLC executable exists in common installation directory
+        vlc_exe_path = [
+        r'C:\Program Files\VideoLAN\VLC\vlc.exe',
+        r'C:\Program Files (x86)\VideoLAN\VLC\vlc.exe'
+    ]
+        if os.path.isfile(vlc_exe_path):
+            return True
+        else:
+            return False
+    except Exception:
+        return False
+def play_with_vlc(url):
+    # Launch VLC player with the given URL
+    subprocess.Popen(['vlc', '--fullscreen', url])
+
+
+
 def clean_temp_directory(temp_dir):
     try:
-        for item in os.listdir(temp_dir):
-            item_path = os.path.join(temp_dir, item)
-            if os.path.isfile(item_path):
-                os.unlink(item_path)
-            elif os.path.isdir(item_path):
-                shutil.rmtree(item_path, ignore_errors=True)
+        for root, dirs, files in os.walk(temp_dir, topdown=False):
+            for file in files:
+                file_path = os.path.join(root, file)
+                os.unlink(file_path)
+            for dir in dirs:
+                dir_path = os.path.join(root, dir)
+                shutil.rmtree(dir_path)
         print(f"Temporary files cleaned from: {temp_dir}")
     except Exception as e:
         print(f"Error cleaning temporary files: {e}")
+
 
 def execute_powder_player(command):
     try:

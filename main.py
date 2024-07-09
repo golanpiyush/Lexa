@@ -1,104 +1,23 @@
 import re
-import requests
-from player import stream_movie_with_powderplayer 
-from day import get_current_day
-import threading
 import psutil
 import time
+import threading
+from prompt_toolkit import prompt
+from prompt_toolkit.completion import WordCompleter
+from player import stream_movie_with_powderplayer, play_trailer_with_powderplayer 
+from utils import get_current_day
+from input_cache import InputCache
+from torrent import fetch_torrent, parse_size
+from movieDetails import fetch_movie_details
 
 
-def parse_size(size_str):
-    size_str = size_str.replace('\xa0', '')  # Remove non-breaking space
-    size_str = size_str.strip()  # Remove any leading/trailing whitespace
+name = "Lexa: "
+api_key = '8647e66c3eb65f11c331cdfd8ca059b3'
+site = "piratebay"
+cache_file = 'input_cache.pkl'
 
-    try:
-        if 'GiB' in size_str:
-            return float(size_str.replace('GiB', '').strip())  # Remove 'GiB' and convert to float
-        elif 'MiB' in size_str:
-            return float(size_str.replace('MiB', '').strip()) / 1024  # Convert MiB to GiB
-        elif 'KiB' in size_str:
-            return float(size_str.replace('KiB', '').strip()) / (1024 * 1024)  # Convert KiB to GiB
-        else:
-            return 0
-    except ValueError as e:
-        print(f"Error converting size string '{size_str}' to float: {e}")
-        return 0
-
-import time
-import sys
-
-def fetch_torrent(site, query):
-    while True:
-        api_url = f"https://torrent-api-py-nx0x.onrender.com/api/v1/search?site={site}&query={query}&limit=1&page=1"
-        
-        try:
-            response = requests.get(api_url)
-            if response.status_code == 200:
-                print("Connection Successful: 200")
-                torrents = response.json()
-
-                if 'data' in torrents and torrents['data']:
-                    torrent_info = torrents['data'][0]  # Get the first result
-                    magnet_url = torrent_info.get('magnet')
-                    seeders = int(torrent_info.get('seeders', '0'))  # Convert seeders to int
-                    total_size_gb = parse_size(torrent_info.get('size', '0'))
-
-                    if seeders >= 20 and total_size_gb < 6:
-                        return magnet_url, torrent_info
-                    else:
-                        print(f"The torrent '{query}' does not meet the criteria (>= 20 seeders and < 6 GB).")
-                        print(f"Seeders: {seeders}, Size: {total_size_gb:.2f} GB")
-                        while True:
-                            print("Do you want to continue with this torrent? (y/n): ", end='', flush=True)
-                            time.sleep(0.1)  # Small delay to ensure prompt is displayed
-                            sys.stdin.flush()  # Flush the input buffer
-                            choice = sys.stdin.readline().strip().lower()
-                            if choice == 'y':
-                                return magnet_url, torrent_info
-                            elif choice == 'n':
-                                break
-                            elif choice == '':
-                                print("No input received. Please enter 'y' or 'n'.")
-                            else:
-                                print("Invalid input. Please enter 'y' or 'n'.")
-                        
-                        print("Enter a new search query (or 'exit' to quit): ", end='', flush=True)
-                        time.sleep(0.1)  # Small delay to ensure prompt is displayed
-                        sys.stdin.flush()  # Flush the input buffer
-                        query = sys.stdin.readline().strip()
-                        if query.lower() == 'exit':
-                            print("Exiting...")
-                            exit(0)
-                else:
-                    print(f"No torrents found for '{query}' on {site}.")
-                    print("Enter a new search query (or 'exit' to quit): ", end='', flush=True)
-                    time.sleep(0.1)  # Small delay to ensure prompt is displayed
-                    sys.stdin.flush()  # Flush the input buffer
-                    query = sys.stdin.readline().strip()
-                    if query.lower() == 'exit':
-                        print("Exiting...")
-                        exit(0)
-            else:
-                print(f"Error fetching data: {response.status_code}")
-                print("Enter a new search query (or 'exit' to quit): ", end='', flush=True)
-                time.sleep(0.1)  # Small delay to ensure prompt is displayed
-                sys.stdin.flush()  # Flush the input buffer
-                query = sys.stdin.readline().strip()
-                if query.lower() == 'exit':
-                    print("Exiting...")
-                    exit(0)
-        except requests.exceptions.RequestException as e:
-            print(f"Error fetching data: {e}")
-            print("Enter a new search query (or 'exit' to quit): ", end='', flush=True)
-            time.sleep(0.1)  # Small delay to ensure prompt is displayed
-            sys.stdin.flush()  # Flush the input buffer
-            query = sys.stdin.readline().strip()
-            if query.lower() == 'exit':
-                print("Exiting...")
-                exit(0)
-
-    return None, None
-
+# Initialize InputCache
+input_cache = InputCache(cache_file=cache_file)
 
 powder_player_running = False
 
@@ -117,7 +36,6 @@ def stream_torrent(magnet_url, query, lock):
                     print("Powder Player is already running. Please close it before starting a new stream.")
                     return
 
-                print(f"Streaming '{query}' using Powder Player...\n")
                 powder_player_running = True
                 process = stream_movie_with_powderplayer(stripped_magnet_link)
 
@@ -140,26 +58,89 @@ def stream_torrent(magnet_url, query, lock):
             print(f"Error streaming: {e}")
             powder_player_running = False
     else:
-        print("Could not find a suitable torrent to stream.")
+        print(f"{name}Could not find a suitable torrent to stream.")
 
 # Initialize threading lock
 streaming_lock = threading.Lock()
 
-# Example usage:
-if __name__ == "__main__":
-    print(f"Hey! It's a Beautiful {get_current_day()}")
-    time.sleep(1)
-    print("\nWhat movie would you like to watch?")
-    site = "piratebay"
-    
-    while True:
-        query = input("Enter search query: ").strip()
-        if query == '-h':
-            print("To Play Movies use the (MovieName)")
-            continue
-        magnet_url, torrent_info = fetch_torrent(site, query)
-        if magnet_url:
-            stream_torrent(magnet_url, query, streaming_lock)
-            break
+def handle_special_commands(query):
+    if query.endswith('--tr'):
+        movie_name = query[:-4].strip()  # Remove '--tr' from query
+        play_trailer_with_powderplayer(movie_name, api_key)
+        return True
+    elif query.endswith('-sy'):
+        movie_name = query[:-4].strip()
+        movie_details = fetch_movie_details(movie_name)
+        if movie_details:
+            print(f"\nTitle: {movie_details['title']} ({movie_details['release_year']})")
+            print(f"Synopsis: {movie_details['synopsis']}\n")
+            # print(f"Release Date: {movie_details['release_date']}")
         else:
-            print("Could not find a suitable torrent.")
+            print("No details found for the specified movie.")
+        return False  
+    elif query.lower() in ['-e', '-q']:
+        
+        print(f"{name}Goodbye...")
+        time.sleep(4)
+        return True
+    
+    return False
+
+
+if __name__ == "__main__":
+    print(f"{name}Hey! It's a Beautiful {get_current_day()}")
+    time.sleep(1)
+    print(f"\n{name}What movie would you like to watch?")
+   
+    while True:
+        suggestions = input_cache.get_suggestions()
+        special_commands = ['-sy', '--tr', '-h', '-q','-e']
+
+        completer = WordCompleter(special_commands + suggestions, ignore_case=True)
+
+        query = prompt(f"{name}Enter search query (or type '-e' or '-q' to quit): ", completer=completer).strip()
+        
+        if handle_special_commands(query):
+            if query.lower() in ['-e', '-q']:
+                break  
+        elif '-sy' in query:
+                continue
+        elif query == '''-h ''':
+            print(f"{name}To Play Movies use the (MovieName)")
+            print(f"{name} Use '-sy' : Synopsis, '--tr' : Tralier")
+            continue
+            # return False
+        elif query == '':
+            print(f'{name}No input found')
+            continue
+        
+        print(f"{name}Searching for: {query}")
+        quality, magnet_url, torrents = fetch_torrent(site, query)
+        
+        if quality == "high_quality" or quality == "low_quality":
+            if quality == "low_quality":
+                choice = input(f"{name}Only lower quality torrents are available. Do you want to proceed? (y/n): ").strip().lower()
+                if choice != 'y':
+                    print(f"{name}Torrent streaming cancelled.")
+                    continue
+
+            choice = input(f"{name}Enter the number of the torrent you want to stream (or 'n' to cancel): ").strip().lower()
+            if choice == 'n':
+                print(f"{name}Torrent streaming cancelled.")
+            elif choice.isdigit() and 1 <= int(choice) <= len(torrents):
+                selected_torrent = torrents[int(choice) - 1]
+                stream_torrent(selected_torrent['magnet'], query, streaming_lock)
+                input_cache.add(query)
+                break
+            else:
+                print(f"{name}Invalid choice. Torrent streaming cancelled.")
+        elif quality == "no_torrents":
+            print(f"{name}Could not find any torrents for: {query}")
+        else:
+            print(f"{name}An error occurred while searching for torrents.")
+        
+        print(f"\n{name}What else would you like to watch?")
+
+    # After exiting the loop, save the cache to file
+    input_cache.add(query, is_history=True)
+    input_cache.save_cache()
