@@ -2,14 +2,20 @@ import time
 import os
 import psutil
 import shutil
-from spinner import Spinner
 import threading
 import platform
-import requests
 import subprocess
-import webbrowser
-from urllib.parse import urlencode
+# from urllib.parse import urlencode
+from spinner import Spinner
+import traceback
+import yt_dlp as ydl
 
+
+
+# Constants and Configuration
+name1 = 'Lexa: '
+powderplayer_path = r'helpers\Powder Player\powder.exe'
+mpv_path = r'helpers\mpv.exe'
 
 def get_temp_directory():
     ram_disk_paths = ['R:\\PowderPlayerTemp', 'S:\\PowderPlayerTemp', 'T:\\PowderPlayerTemp']
@@ -20,100 +26,36 @@ def get_temp_directory():
     # Fallback to a directory in the user's temp folder
     return os.path.join(os.environ['TEMP'], 'PowderPlayerTemp')
 
-api_key = '8647e66c3eb65f11c331cdfd8ca059b3'
-def is_powder_player_running():
-    return any("powder.exe" in p.name().lower() for p in psutil.process_iter(['name']))
 
 
-def play_trailer_with_powderplayer(movie_name, api_key, autoplay=True):
+def playTralier(movie_name):
     try:
-        # Search for the movie on TMDB
-        search_url = "https://api.themoviedb.org/3/search/movie"
-        search_params = {
-            'api_key': api_key,
-            'query': movie_name
+
+        ydl_opts = {
+            'quiet': True,
+            'format': 'best[ext=mp4]',
+            'extract_flat': True,
+            'default_search': 'ytsearch',
+            'noplaylist': True
         }
-        
-        search_response = requests.get(search_url, params=search_params)
-        search_json = search_response.json()
 
-        # Check if there are results for the search query
-        if not search_json['results']:
-            print(f"No results found for '{movie_name}' on TMDB.")
-            return None
+        with ydl.YoutubeDL(ydl_opts) as ydl_obj:
+            result = ydl_obj.extract_info(f'ytsearch:{movie_name} official trailer', download=False)
 
-        # Get the movie ID of the first result
-        movie_id = search_json['results'][0]['id']
+            if 'entries' in result and result['entries']:
+                first_result = result['entries'][0]
+                youtube_url = first_result['url']
+                mpv_command = [mpv_path, youtube_url]
+                subprocess.run(mpv_command, check=True)
 
-        # Fetch trailers for the movie
-        trailers_url = f"https://api.themoviedb.org/3/movie/{movie_id}/videos"
-        trailers_params = {
-            'api_key': api_key
-        }
-        
-        trailers_response = requests.get(trailers_url, params=trailers_params)
-        trailers_json = trailers_response.json()
-
-        # Extract YouTube trailers
-        trailers = []
-        for item in trailers_json.get('results', []):
-            if item['type'] == 'Trailer' and item['site'] == 'YouTube':
-                trailer_data = {
-                    'name': item['name'],
-                    'key': item['key']
-                }
-                trailers.append(trailer_data)
-
-        # If trailers are found, play the first trailer with autoplay option
-        if trailers:
-            print(f"Found {len(trailers)} trailers for '{movie_name}':")
-            trailer = trailers[0]
-            print(f"Playing trailer '{trailer['name']}' {'with autoplay' if autoplay else 'without autoplay'}...")
-
-            # Construct YouTube URL with parameters
-            base_url = "https://www.youtube.com/watch"
-            params = {
-                'v': trailer['key'],
-                'autoplay': 1 if autoplay else 0
-            }
-            full_url = f"{base_url}?{urlencode(params)}"
-
-            # Open the YouTube URL in the default web browser
-            webbrowser.open(full_url)
-
-            return True
-
-        else:
-            print(f"No trailers found for '{movie_name}' on TMDB.")
-            return False
+                return True
+            else:
+                print(f"No official trailer found for '{movie_name}' on YouTube.")
+                return False
 
     except Exception as e:
         print(f"An error occurred: {str(e)}")
-        return None
-
-
-def is_vlc_installed():
-    # Check if VLC is installed by attempting to run 'vlc' command and checking return code
-    try:
-        subprocess.run(['vlc', '--version'], stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=True)
-        return True
-    except subprocess.CalledProcessError:
-        # Check if VLC executable exists in common installation directory
-        vlc_exe_path = [
-        r'C:\Program Files\VideoLAN\VLC\vlc.exe',
-        r'C:\Program Files (x86)\VideoLAN\VLC\vlc.exe'
-    ]
-        if os.path.isfile(vlc_exe_path):
-            return True
-        else:
-            return False
-    except Exception:
         return False
-def play_with_vlc(url):
-    # Launch VLC player with the given URL
-    subprocess.Popen(['vlc', '--fullscreen', url])
-
-
 
 def clean_temp_directory(temp_dir):
     try:
@@ -129,41 +71,78 @@ def clean_temp_directory(temp_dir):
         print(f"Error cleaning temporary files: {e}")
 
 
+
+def bring_powder_player_to_foreground(process):
+    try:
+        # Placeholder for bringing Powder Player to foreground
+        time.sleep(10)  # Simulate bringing to foreground after 10 seconds
+        
+        # Actual implementation to bring the window to foreground based on platform
+        if process and platform.system() == 'Windows':
+            import ctypes
+            ctypes.windll.user32.SwitchToThisWindow(process.pid, True)
+        elif process and platform.system() == 'Linux':
+            subprocess.run(['wmctrl', '-ia', f'{process.pid}'])
+        else:
+            print("Unsupported platform for foreground handling.")
+    except Exception as e:
+        print(f"Error bringing Powder Player to foreground: {e}")
+
+
+def playMusic(song_name):
+    youtube_url = None
+    try:
+        ydl_opts = {
+            'format': 'bestaudio/best',
+            'noplaylist': True,
+            'quiet': True,
+            'skip_download': True,
+            'default_search': 'ytsearch',
+            'extract_flat': True,
+        }
+        with ydl.YoutubeDL(ydl_opts) as ydl_obj:
+            result = ydl_obj.extract_info(f'ytsearch:{song_name} official song with lyrics', download=False)
+            if 'entries' in result:
+                youtube_url = result['entries'][0]['url']
+            else:
+                youtube_url = result['url']
+
+        if youtube_url:
+            with Spinner(f"Playing {youtube_url} with mpv..."):
+            # Play the video as audio using mpv
+                mpv_command = [
+                    mpv_path, '--quiet', '--ontop=no',
+                    '--af=equalizer=f=32:width_type=h:width=50:g=10,equalizer=f=64:width_type=h:width=50:g=10,equalizer=f=125:width_type=h:width=50:g=5',
+                    youtube_url
+                ]
+                subprocess.run(mpv_command, check=True)  # Ensure mpv starts correctly
+
+    except ydl.utils.DownloadError as e:
+        print(f"Error fetching video URL: {e}")
+    except subprocess.CalledProcessError as e:
+        print(f"Error playing video with mpv: {e}")
+        print(traceback.format_exc())  # Print full traceback for better diagnostics
+    except Exception as e:
+        print(f"Unexpected error: {e}")
+        print(traceback.format_exc())
+
+
+# executer
+
 def execute_powder_player(command):
     try:
         # Start the Powder Player process in the background
         process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-        # print("Powder Player started in background.")
         return process
     except Exception as e:
         print(f"Error starting Powder Player: {e}")
         return None
 
-def bring_powder_player_to_foreground(process):
-    try:
-        # Placeholder for bringing Powder Player to foreground
-        time.sleep(10)  # Simulate bringing to foreground after 20 seconds
-        # print("Bringing Powder Player to foreground...")
-        
-        # Actual implementation to bring the window to foreground based on platform
-        if process and platform.system() == 'Windows':
-            # Windows specific code using ctypes
-            import ctypes
-            ctypes.windll.user32.SwitchToThisWindow(process.pid, True)
-        elif process and platform.system() == 'Linux':
-            # Linux specific code using wmctrl
-            subprocess.run(['wmctrl', '-ia', f'{process.pid}'])
-        else:
-            print("Unsupported platform for foreground handling.")
-        
-        # For demonstration purposes, print a message indicating foreground operation
-        # print("Powder Player is now in the foreground.")
-    except Exception as e:
-        print(f"Error bringing Powder Player to foreground: {e}")
 
-def stream_movie_with_powderplayer(stripped_magnet_link):
-    powderplayer_path = r'helpers\Powder Player\powder.exe'  # Adjust the path accordingly
-    
+# function which streams movies
+
+
+def movieStreamer(stripped_magnet_link):
     # Get the temporary directory
     temp_dir = get_temp_directory()
     
@@ -189,6 +168,7 @@ def stream_movie_with_powderplayer(stripped_magnet_link):
             # Start the Powder Player process in the background using threading
             thread = threading.Thread(target=execute_powder_player, args=(command,))
             thread.start()
+            print(f"\n{name1}Movies may take from a few seconds to a few minutes to process depending on our fellow seeders.")
             time.sleep(10)  # Simulate 10 seconds delay to allow startup
             
             # Get the running Powder Player process
@@ -216,6 +196,4 @@ def stream_movie_with_powderplayer(stripped_magnet_link):
     except Exception as e:
         print(f"Unexpected error streaming with Powder Player: {e}")
 
-# Example usage:
-# magnet_link = "your_magnet_link_here"
-# stream_movie_with_powderplayer(magnet_link)
+
