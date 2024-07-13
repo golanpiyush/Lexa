@@ -1,13 +1,15 @@
 import requests
-
-def fetch_torrent(site, query, categories=None, season_filter=None, episode_filter=None):
+from colorama import Fore
+import re
+# init(autoreset=True)
+def fetchMovie(site, query, categories=None, season_filter=None, episode_filter=None):
     api_url = f"https://torrent-api-py-nx0x.onrender.com/api/v1/search?site={site}&query={query}&limit=10&page=1"
 
     if categories:
         api_url += f"&categories={','.join(categories)}"
 
-    quality_keywords = ['720p', '1080p', 'BRip', 'BDRip', 'Blu-Ray', 'BluRay', 'WEBRip', 'WEBDL', 'WEB DL', 'WEB-DL', 'HDRip', 'x264', 'x265']
-    low_quality_keywords = ['telesync', 'hdts', 'ts', 'cam-rip', 'hdcam', 'cam']
+    quality_keywords = ['BRip', 'BDRip', 'Blu-Ray', 'BluRay', 'WEBRip', 'WEBDL', 'WEB DL', 'WEB-DL', 'HDRip']
+    low_quality_keywords = ['telesync', 'hdts', 'ts', 'cam-rip', 'hdcam', 'cam','TELE-SYNC', 'HDTS','TELESYNC', 'HD-TS', 'TS', 'CAM-RIP', 'HDCAM', 'CAM']
 
     try:
         response = requests.get(api_url)
@@ -55,7 +57,10 @@ def fetch_torrent(site, query, categories=None, season_filter=None, episode_filt
             low_quality_torrents.sort(key=lambda x: x['seeders'], reverse=True)
 
             if quality_torrents:
-                print("Found the following quality torrents:")
+                if 's' in query.lower() and re.search(r's\d+', query, re.IGNORECASE):
+                    print(Fore.WHITE + f"Found the following quality seasons for {query[:-4].strip()}:\n")
+                else:
+                    print(Fore.WHITE + "Found the following quality movies:\n")
                 for i, torrent in enumerate(quality_torrents[:3], 1):
                     size_mb = torrent['size']
                     if size_mb >= 1024:
@@ -66,7 +71,10 @@ def fetch_torrent(site, query, categories=None, season_filter=None, episode_filt
                 
                 return "high_quality", quality_torrents[0]['magnet'], quality_torrents
             elif low_quality_torrents:
-                print("Only lower quality torrents are available:")
+                if 's' in query.lower() and re.search(r's\d+', query, re.IGNORECASE):
+                    print(Fore.RED + f"Only lower quality seasons are available for {query[:-4].strip()}:\n")
+                else:
+                    print(Fore.RED + "Only lower quality movies are available:\n")
                 for i, torrent in enumerate(low_quality_torrents[:3], 1):
                     size_mb = torrent['size']
                     if size_mb >= 1024:
