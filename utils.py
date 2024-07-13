@@ -1,8 +1,9 @@
-# day.py
+
 
 import datetime
+import os
 
-def get_current_day():
+def currentDay():
     # Get the current date
     today = datetime.datetime.now()
    
@@ -14,3 +15,12 @@ def get_current_day():
    
     # Return the day of the week as a string
     return days[day_index]
+
+def ClearScreen():
+    # Clear command-line screen based on OS
+    if os.name == 'nt':   # for Windows
+        _ = os.system('cls')
+    elif os.name == 'posix':  # for Unix and Linux
+        _ = os.system('clear')
+    else:
+        print("Unsupported OS. Cannot clear the screen.")
