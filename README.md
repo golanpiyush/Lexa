@@ -62,4 +62,3 @@ MIT License
 
 ---
 
-Let me know if you want to include screenshots, badges, or a project roadmap.
