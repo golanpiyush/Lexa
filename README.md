@@ -27,7 +27,7 @@ Lexa uses available seeders to stream torrent files. The more seeds, the better 
 
 ```bash
 # Clone the repository
-git clone https://github.com/your-username/lexa.git
+git clone https://github.com/golanpiyush/lexa.git
 cd lexa
 
 # Install dependencies (if any)
